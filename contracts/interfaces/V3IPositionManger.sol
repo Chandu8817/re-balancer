@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 interface V3PositionManager {
-   struct MintParams {
+    struct MintParams {
         address token0;
         address token1;
         int24 tickSpacing;
@@ -26,8 +26,15 @@ interface V3PositionManager {
     /// @return amount1 The amount of token1
     function mint(
         MintParams calldata params
-    ) external payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
-
+    )
+        external
+        payable
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1
+        );
 
     struct IncreaseLiquidityParams {
         uint256 tokenId;
@@ -81,6 +88,7 @@ interface V3PositionManager {
         uint256 amount0Max;
         uint256 amount1Max;
     }
+
     /// @notice Collects fees from a position
     /// @param params tokenId The ID of the token for which fees are being collected,
     /// recipient The address to which the fees will be sent,
@@ -91,8 +99,8 @@ interface V3PositionManager {
     function collect(
         CollectParams calldata params
     ) external returns (uint256 amount0, uint256 amount1);
-   
-       /// @notice Returns the position information associated with a given token ID.
+
+    /// @notice Returns the position information associated with a given token ID.
     /// @dev Throws if the token ID is not valid.
     /// @param tokenId The ID of the token that represents the position
     /// @return token0 The address of the token0 for a specific pool
