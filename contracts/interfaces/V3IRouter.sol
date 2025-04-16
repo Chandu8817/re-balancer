@@ -26,6 +26,11 @@ interface IUniswapV3SwapCallback {
 /// @title Router token swapping functionality
 /// @notice Functions for swapping tokens via Uniswap V3
 interface ISwapRouter is IUniswapV3SwapCallback {
+
+
+
+
+
     struct ExactInputSingleParams {
         address tokenIn;
         address tokenOut;
@@ -91,4 +96,7 @@ interface ISwapRouter is IUniswapV3SwapCallback {
     function exactOutput(
         ExactOutputParams calldata params
     ) external payable returns (uint256 amountIn);
+
+    function quoteExactInputSingle(ExactInputSingleParams calldata params) external view returns (uint256 amountOut);
+
 }

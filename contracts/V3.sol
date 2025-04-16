@@ -5,11 +5,14 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {V3PositionManager} from "./interfaces/V3IPositionManger.sol";
 import {ISwapRouter} from "./interfaces/V3IRouter.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IVoter} from "./interfaces/IVoter.sol";
 
 abstract contract V3 {
     function removeLiqudity(
         uint256 tokenId,
-        V3PositionManager v3PositionManager
+        V3PositionManager v3PositionManager,
+        address _voter,
+        address pool
     ) internal {
         // remove liquidity from the pool
         // this function should be implemented to remove liquidity from the pool
@@ -23,6 +26,21 @@ abstract contract V3 {
                 amount1Min: 0,
                 deadline: block.timestamp + 1
             });
+        IVoter voter = IVoter(_voter);
+        address _gauge = voter.gaugeForPool(pool);
+        address _xShadow = voter.xShadow();
+        address[] memory _gauges = new address[](1);
+        _gauges[0] = _gauge;
+
+        address[][] memory _tokens = new address[][](1);
+        _tokens[0] = new address[](1); // Initialize inner array
+        _tokens[0][0] = _xShadow;
+
+        uint256[][] memory _nfpTokenIds = new uint256[][](1);
+        _nfpTokenIds[0] = new uint256[](1);
+        _nfpTokenIds[0][0] = tokenId;
+        // claim rewards from the gauge
+        voter.claimClGaugeRewards(_gauges, _tokens, _nfpTokenIds);
 
         v3PositionManager.decreaseLiquidity(params);
 
@@ -83,18 +101,26 @@ abstract contract V3 {
         uint256 token0Balance,
         uint256 token1Balance,
         V3PositionManager v3PositionManager,
-        uint256 tokenId,
+        uint256 positionId,
         bool increaeLiquidity
-    ) internal {
+    )
+        internal
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1
+        )
+    {
         approveTokens(
             [tokenA, tokenB],
             [token0Balance, token1Balance],
             address(v3PositionManager)
         );
         if (increaeLiquidity) {
-            v3PositionManager.increaseLiquidity(
+            (liquidity, amount0, amount1) = v3PositionManager.increaseLiquidity(
                 V3PositionManager.IncreaseLiquidityParams({
-                    tokenId: tokenId,
+                    tokenId: positionId,
                     amount0Desired: token0Balance,
                     amount1Desired: token1Balance,
                     amount0Min: 0,
@@ -102,7 +128,12 @@ abstract contract V3 {
                     deadline: block.timestamp + 1
                 })
             );
+            return (positionId, liquidity, amount0, amount1);
         } else {
+            if (positionId != 0) {
+                v3PositionManager.burn(positionId);
+            }
+
             V3PositionManager.MintParams memory params = V3PositionManager
                 .MintParams({
                     token0: tokenA,
@@ -118,7 +149,10 @@ abstract contract V3 {
                     deadline: block.timestamp + 1
                 });
 
-            v3PositionManager.mint(params);
+            (tokenId, liquidity, amount0, amount1) = v3PositionManager.mint(
+                params
+            );
+            return (tokenId, liquidity, amount0, amount1);
         }
     }
 
@@ -148,5 +182,36 @@ abstract contract V3 {
         uint256 balanceTokenA = IERC20(tokenA).balanceOf(address(this));
         uint256 balanceTokenB = IERC20(tokenB).balanceOf(address(this));
         return (balanceTokenA, balanceTokenB);
+    }
+
+    function calculateAmountOutMinimum(
+        address router,
+        address tokenIn,
+        address tokenOut,
+        int24 tickSpacing,
+        uint256 amountIn,
+        uint160 sqrtPriceLimitX96,
+        uint256 maxSlippage
+    ) internal view returns (uint256 amountOutMinimum) {
+        // 1. Create the swap parameters
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+            .ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                tickSpacing: tickSpacing,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountIn,
+                amountOutMinimum: 0, // Set to 0 for now, we'll calculate this
+                sqrtPriceLimitX96: sqrtPriceLimitX96
+            });
+        ISwapRouter swapRouter = ISwapRouter(router);
+
+        // 2. Call the `quoteExactInputSingle` function on the router to get the expected output amount
+        uint256 expectedAmountOut = swapRouter.quoteExactInputSingle(params);
+
+        // 3. Apply slippage tolerance to get the minimum output amount
+
+        amountOutMinimum = (expectedAmountOut * (1000 - maxSlippage)) / 1000;
     }
 }
